@@ -15,16 +15,19 @@ user_collection = db['Users']
 db['Weather'].create_index("Device Name")
 user_collection.create_index([("last_login", pymongo.ASCENDING)], expireAfterSeconds=30 * 24 * 60 * 60)
 
+# ==========================
 # ✅ Weather DB Functions
+# ==========================
+
 def insert_weather(data):
     """Insert a single weather record."""
-    data["Time"] = datetime.datetime.utcnow()  # Automatically add time if missing
+    data["Time"] = datetime.datetime.utcnow()
     return collection.insert_one(data)
 
 def insert_multiple_weather(data_list):
     """Insert multiple weather records."""
     for d in data_list:
-        d["Time"] = datetime.datetime.utcnow()  # Automatically add time if missing
+        d["Time"] = datetime.datetime.utcnow()
     return collection.insert_many(data_list)
 
 def get_max_precipitation(sensor):
@@ -55,18 +58,25 @@ def update_precipitation_value(record_id, new_value):
         {"$set": {"Precipitation mm/h": new_value}}
     )
 
+def delete_reading_by_id(reading_id):
+    """Delete a weather reading by its ID."""
+    return collection.delete_one({"_id": ObjectId(reading_id)})
+
+# ==========================
 # ✅ User Data Functions
+# ==========================
+
 def insert_user_data(user_data):
     """Insert a new user into the database with hashed password."""
     try:
         user_data["last_login"] = datetime.datetime.utcnow()
-        user_data["created_at"] = datetime.datetime.utcnow()  # ✅ fixed missing field
+        user_data["created_at"] = datetime.datetime.utcnow()
 
         if "role" not in user_data:
-            user_data["role"] = "Student"  # Default role if not provided
+            user_data["role"] = "Student"
 
         if "username" not in user_data or "password" not in user_data:
-            return None  # Missing username or password
+            return None
 
         hashed_pw = bcrypt.hashpw(user_data["password"].encode(), bcrypt.gensalt())
         user_data["password"] = hashed_pw.decode()

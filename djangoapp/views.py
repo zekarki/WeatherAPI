@@ -6,6 +6,7 @@ import json
 import datetime
 import base64
 from . import models as db
+from bson import ObjectId
 
 # ✅ Basic Auth decorator
 def require_auth(view_func):
@@ -307,3 +308,89 @@ def retrieve_max_temp_multiple_records(request):
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
+# ✅ Retrieve all weather readings (Teacher, Student)
+@csrf_exempt
+@require_auth
+@require_role(["Teacher", "Sensor"])
+def update_multiple_weather_readings(request):
+    if request.method == "PATCH":
+        try:
+            data = json.loads(request.body.decode())
+            ids = data.get("ids", [])
+            update_fields = data.get("update_fields", {})
+
+            if not ids or not update_fields:
+                return JsonResponse({"error": "ids and update_fields are required"}, status=400)
+
+            # convert string ids to ObjectId
+            from bson import ObjectId
+            object_ids = [ObjectId(id) for id in ids]
+
+            result = db.collection.update_many(
+                {"_id": {"$in": object_ids}},
+                {"$set": update_fields}
+            )
+
+            return JsonResponse({"message": f"Updated {result.modified_count} record(s)"})
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+# ✅ Delete a weather reading (Teacher, Sensor)        
+@csrf_exempt
+@require_auth
+@require_role(["Teacher", "Sensor"])
+def delete_reading(request):
+    if request.method == "DELETE":
+        try:
+            data = json.loads(request.body.decode())
+            reading_id = data.get("_id")
+            if not reading_id:
+                return JsonResponse({"error": "Missing _id parameter"}, status=400)
+            
+            result = db.delete_reading_by_id(reading_id)
+            if result.deleted_count:
+                return JsonResponse({"message": "Deleted"})
+            else:
+                return JsonResponse({"message": "Not found"}, status=404)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+# ✅ Delete multiple weather readings (Teacher only)
+@csrf_exempt
+@require_auth
+@require_role(["Teacher"])
+def delete_multiple_readings(request):
+    if request.method == "DELETE":
+        try:
+            data = json.loads(request.body.decode())
+            ids = data.get("ids")
+
+            if not ids or not isinstance(ids, list):
+                return JsonResponse({"error": "Provide a list of IDs under 'ids'"}, status=400)
+
+            object_ids = [ObjectId(id_str) for id_str in ids]
+            result = db.collection.delete_many({"_id": {"$in": object_ids}})
+
+            return JsonResponse({"message": f"{result.deleted_count} readings deleted"}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+# ✅ Retrieve all weather readings (Teacher, Student)   
+@csrf_exempt
+@require_auth
+@require_role(["Teacher", "Student"])
+def projected_temperature(request):
+    if request.method == "GET":
+        try:
+            # Find all readings with temperature > 44
+            result = db.collection.find(
+                {"Temperature (\u00b0C)": {"$gt": 44}},  # filter condition
+                {"Device Name": 1, "Time": 1, "Temperature (\u00b0C)": 1, "_id": 0}  # projection
+            )
+            output = list(result)
+            return JsonResponse(output, safe=False)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+
+
+

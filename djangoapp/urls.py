@@ -16,5 +16,8 @@ urlpatterns = [
     path('analysis/indexed', views.temperature_index_query, name='temperature_index_query'),
     path('reading', views.retrieve_specific_record, name='retrieve_specific_record'),
     path('readings-max', views.retrieve_max_temp_multiple_records, name='retrieve_max_temp_multiple_records'),
-
+    path('readings/update-multiple', views.update_multiple_weather_readings, name='update_multiple_weather_readings'),
+    path('reading/delete', views.delete_reading, name='delete_reading'),
+    path('readings/delete', views.delete_multiple_readings, name='delete_multiple_readings'),
+    path('reading/projected', views.projected_temperature, name='projected_temperature'),
 ]
