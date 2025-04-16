@@ -36,7 +36,7 @@ def get_max_precipitation(sensor):
     return collection.find(
         {"Device Name": sensor, "Time": {"$gte": date_limit}},
         {"Precipitation mm/h": 1, "Time": 1, "Device Name": 1}
-    ).sort("Precipitation mm/h", -1).limit(1)
+    ).sort("precipitation_mm_per_h", -1).limit(1)
 
 def get_max_temperature(start, end):
     """Get the maximum temperature within a specific date range."""
@@ -55,12 +55,25 @@ def update_precipitation_value(record_id, new_value):
     """Update the precipitation value of a specific record."""
     return collection.update_one(
         {"_id": ObjectId(record_id)},
-        {"$set": {"Precipitation mm/h": new_value}}
+        {"$set": {"precipitation_mm_per_h": new_value}}
     )
 
 def delete_reading_by_id(reading_id):
-    """Delete a weather reading by its ID."""
+    """Log the weather reading before deletion."""
+    # Find the record before deleting
+    reading = collection.find_one({"_id": ObjectId(reading_id)})
+    if not reading:
+        return None
+
+    # Add log timestamp
+    reading["deleted_at"] = datetime.datetime.utcnow()
+
+    # Insert into log collection
+    log_collection.insert_one(reading)
+
+    # Now delete the actual reading
     return collection.delete_one({"_id": ObjectId(reading_id)})
+
 
 # ==========================
 # ✅ User Data Functions
