@@ -13,22 +13,69 @@ user_collection = db['Users']
 
 # ✅ Indexes
 db['Weather'].create_index("Device Name")
-user_collection.create_index([("last_login", pymongo.ASCENDING)], expireAfterSeconds=30 * 24 * 60 * 60)
+# user_collection.create_index([("last_login", pymongo.ASCENDING)], expireAfterSeconds=30 * 24 * 60 * 60)
+user_collection.create_index(
+    [("last_login", pymongo.ASCENDING)],
+    name="last_login_ttl_index",
+    expireAfterSeconds=30 * 24 * 60 * 60
+)
+
 
 # ==========================
 # ✅ Weather DB Functions
 # ==========================
 
 def insert_weather(data):
-    """Insert a single weather record."""
+    """Insert a single weather record with default values for missing fields."""
     data["Time"] = datetime.datetime.utcnow()
+
+    # List of expected fields and default values
+    required_fields = {
+        "Temperature (\u00b0C)": 0.0,
+        "Atmospheric Pressure (kPa)": 0.0,
+        "Solar Radiation (W/m2)": 0.0,
+        "Precipitation mm/h": 0.0,
+        "Vapor Pressure (kPa)": 0.0,
+        "Humidity (%)": 0.0,
+        "Wind Direction (°)": 0.0,
+        "Max Wind Speed (m/s)": 0.0,
+        "Latitude": 0.0,
+        "Longitude": 0.0,
+        "Device Name": "Unknown Sensor"
+    }
+
+    # Set default if any field is missing
+    for field, default in required_fields.items():
+        if field not in data:
+            data[field] = default
+
     return collection.insert_one(data)
 
+
 def insert_multiple_weather(data_list):
-    """Insert multiple weather records."""
+    """Insert multiple weather records with default values for missing fields."""
+    required_fields = {
+        "Temperature (\u00b0C)": 0.0,
+        "Atmospheric Pressure (kPa)": 0.0,
+        "Solar Radiation (W/m2)": 0.0,
+        "Precipitation mm/h": 0.0,
+        "Vapor Pressure (kPa)": 0.0,
+        "Humidity (%)": 0.0,
+        "Wind Direction (°)": 0.0,
+        "Max Wind Speed (m/s)": 0.0,
+        "Latitude": 0.0,
+        "Longitude": 0.0,
+        "Device Name": "Unknown Sensor"
+    }
+
     for d in data_list:
         d["Time"] = datetime.datetime.utcnow()
+        for field, default in required_fields.items():
+            if field not in d:
+                d[field] = default
+
     return collection.insert_many(data_list)
+
 
 def get_max_precipitation(sensor):
     """Get maximum precipitation for a sensor in the last 150 days."""
@@ -37,6 +84,7 @@ def get_max_precipitation(sensor):
         {"Device Name": sensor, "Time": {"$gte": date_limit}},
         {"Precipitation mm/h": 1, "Time": 1, "Device Name": 1}
     ).sort("precipitation_mm_per_h", -1).limit(1)
+   
 
 def get_max_temperature(start, end):
     """Get the maximum temperature within a specific date range."""
@@ -44,6 +92,7 @@ def get_max_temperature(start, end):
         {"Time": {"$gte": start, "$lte": end}},
         {"Device Name": 1, "Time": 1, "Temperature (\u00b0C)": 1}
     ).sort("Temperature (\u00b0C)", -1).limit(1)
+    
 
 def temperature_range_query(low, high):
     """Find records with temperature in the specified range."""

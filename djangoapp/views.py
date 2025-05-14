@@ -121,16 +121,42 @@ def reading_routes(request):
         if user["role"] not in ["Teacher", "Student"]:
             return JsonResponse({"error": "Forbidden"}, status=403)
         try:
-            start = datetime.datetime.strptime(request.GET["start"], "%Y-%m-%dT%H:%M")
-            end = datetime.datetime.strptime(request.GET["end"], "%Y-%m-%dT%H:%M")
-            result = list(db.get_max_temperature(start, end))
-            for d in result:
-                d["_id"] = str(d["_id"])
-            return JsonResponse(result, safe=False)
+            try:
+                body = json.loads(request.body.decode())  # ✅ Safely try to load body
+            except Exception:
+                body = {}  # If body is empty or not JSON, use empty dict
+
+            _id = body.get("_id")   # ✅ Now _id comes from body
+            start_time = request.GET.get("start")
+            end_time = request.GET.get("end")
+
+            # 🔥 1. If _id is provided, search by _id
+            if _id:
+                try:
+                    record = db.collection.find_one({"_id": ObjectId(_id)})
+                    if not record:
+                        return JsonResponse({"error": "No record found with this ID"}, status=404)
+                    record["_id"] = str(record["_id"])
+                    return JsonResponse(record, status=200)
+                except Exception as e:
+                    return JsonResponse({"error": str(e)}, status=400)
+
+            # 🔥 2. If start and end are provided, search by datetime
+            if start_time and end_time:
+                start = datetime.datetime.strptime(start_time.strip(), "%Y-%m-%dT%H:%M")
+                end = datetime.datetime.strptime(end_time.strip(), "%Y-%m-%dT%H:%M")
+                result = list(db.get_max_temperature(start, end))
+                for d in result:
+                    d["_id"] = str(d["_id"])
+                return JsonResponse(result, safe=False, status=200)
+
+            # 🔥 3. If neither _id nor start/end, return error
+            return JsonResponse({"error": "Missing _id in body or start/end in URL"}, status=400)
+
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
-    
+        
 
     # ============ DELETE ============
     if request.method == "DELETE":
@@ -178,25 +204,62 @@ def multiple_readings(request):
         if user["role"] not in ["Teacher", "Student"]:
             return JsonResponse({"error": "Forbidden"}, status=403)
         try:
+            _id = request.GET.get("_id")
             sensor = request.GET.get("sensor")
-            start_time = request.GET.get("start")
-            end_time = request.GET.get("end")
-            if not (sensor and start_time and end_time):
-                return JsonResponse({"error": "Missing parameters"}, status=400)
-            start = datetime.datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
-            end = datetime.datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
-            record = db.collection.find_one({"Device Name": sensor, "Time": {"$gte": start, "$lte": end}}, {"Temperature (\u00b0C)": 1, "Atmospheric Pressure (kPa)": 1, "Solar Radiation (W/m2)": 1, "Precipitation mm/h": 1, "Time": 1, "Device Name": 1})
-            if not record:
-                return JsonResponse({"error": "No matching record found"}, status=404)
-            response = {
-                "Sensor Name": record.get("Device Name"),
-                "Date/Time": record.get("Time").strftime("%d-%b-%Y %H:%M"),
-                "Temperature (°C)": record.get("Temperature (\u00b0C)"),
-                "Atmospheric Pressure (kPa)": record.get("Atmospheric Pressure (kPa)"),
-                "Radiation (W/m2)": record.get("Solar Radiation (W/m2)"),
-                "precipitation_mm_per_h": record.get("precipitation_mm_per_h")
-            }
-            return JsonResponse(response, status=200)
+            start_time = request.GET.get("start", "").strip()
+            end_time = request.GET.get("end", "").strip()
+
+            # 🔥 If _id is provided, search by _id
+            if _id:
+                try:
+                    record = db.collection.find_one(
+                        {"_id": ObjectId(_id)}
+                    )
+                    if not record:
+                        return JsonResponse({"error": "No matching record found by ID"}, status=404)
+
+                    response = {}
+                    for key in record:
+                        value = record[key]
+                        if key == "_id":
+                            response["_id"] = str(value)
+                        elif isinstance(value, datetime.datetime):
+                            response["Date/Time"] = value.strftime("%d-%b-%Y %H:%M")
+                        elif key == "Device Name":
+                            response["Sensor Name"] = value
+                        else:
+                            response[key] = value
+
+                    return JsonResponse(response, status=200)
+                except Exception as e:
+                    return JsonResponse({"error": str(e)}, status=400)
+
+            # 🔥 If sensor and start/end are provided, search by sensor name and time
+            if sensor and start_time and end_time:
+                start = datetime.datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
+                end = datetime.datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
+                record = db.collection.find_one(
+                    {"Device Name": sensor, "Time": {"$gte": start, "$lte": end}}
+                )
+                if not record:
+                    return JsonResponse({"error": "No matching record found by Sensor/Time"}, status=404)
+
+                response = {}
+                for key in record:
+                    value = record[key]
+                    if key == "_id":
+                        response["_id"] = str(value)
+                    elif isinstance(value, datetime.datetime):
+                        response["Date/Time"] = value.strftime("%d-%b-%Y %H:%M")
+                    elif key == "Device Name":
+                        response["Sensor Name"] = value
+                    else:
+                        response[key] = value
+
+                return JsonResponse(response, status=200)
+
+            return JsonResponse({"error": "Missing parameters"}, status=400)
+
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
@@ -207,12 +270,7 @@ def multiple_readings(request):
             return JsonResponse({"error": "Forbidden"}, status=403)
         try:
             data = json.loads(request.body.decode())
-            # ids = data.get("ids", [])
-            # update_fields = data.get("update_fields", {})
-            # if not ids or not update_fields:
-            #     return JsonResponse({"error": "ids and update_fields are required"}, status=400)
-            # object_ids = [ObjectId(id) for id in ids]
-            # result = db.collection.update_many({"_id": {"$in": object_ids}}, {"$set": update_fields})
+            
             updates = data.get("updates", [])
             if not isinstance(updates, list) or not updates:
                 return JsonResponse({"error": "updates must be a non-empty list of {id, update_fields} items"}, status=400)
@@ -317,7 +375,7 @@ def multiple_readings(request):
 # ===== Insert a user =====
 @csrf_exempt
 @require_auth
-@require_role(["Teacher"])
+@require_role(["Admin", "Teacher"])
 def insert_user(request):
     if request.method == "POST":
         try:
@@ -349,16 +407,32 @@ def delete_user(request, id):
 # ===== Delete multiple students =====
 @csrf_exempt
 @require_auth
-@require_role(["Teacher"])
+@require_role(["Admin", "Teacher"])
 def multiple_users(request):
     user = request.user  
+    
+    # ===== Delete user by role and date =====
 
     if request.method == "DELETE":
         try:
             data = json.loads(request.body.decode())
             start = datetime.datetime.strptime(data["start"], "%Y-%m-%d")
             end = datetime.datetime.strptime(data["end"], "%Y-%m-%d")
-            result = db.delete_students_by_date(start, end)
+            # result = db.delete_students_by_date(start, end)
+            role = data.get("role", "Student")  # default to Student if not specified
+            requester_role = user["role"]       # role of who is making the request
+
+            # Only Admin can delete Teachers
+            if role == "Teacher" and requester_role != "Admin":
+                return JsonResponse({"error": "Only Admins can delete Teacher accounts"}, status=403)
+
+            # Proceed to delete
+            result = db.user_collection.delete_many({
+                "role": role,
+                "last_login": {"$gte": start, "$lte": end}
+            })
+
+
             return JsonResponse({"message": f"{result.deleted_count} deleted"})
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
@@ -418,7 +492,7 @@ def max_precipitation_5months(request):
         try:
             sensor = request.GET.get("sensor")
             result = db.get_max_precipitation(sensor)
-            output = [{"Sensor Name": d.get("Device Name"), "Reading Date/Time": d.get("Time").strftime("%d-%b-%Y %H:%M"), "precipitation_mm_per_h": d.get("precipitation_mm_per_h")} for d in result]
+            output = [{"Sensor Name": d.get("Device Name"), "Reading Date/Time": d.get("Time").strftime("%d-%b-%Y %H:%M"), "precipitation_mm_per_h": d.get("Precipitation mm/h")} for d in result]
             return JsonResponse(output, safe=False)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)

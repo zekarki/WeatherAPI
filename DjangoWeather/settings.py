@@ -127,6 +127,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [
     "https://www.google.com",   # Allow google.com
+    # "http://localhost:8000",  # Allow localhost for development
 ]
 
 CORS_ALLOW_METHODS = [
@@ -134,6 +135,8 @@ CORS_ALLOW_METHODS = [
     "POST",
     "PUT",
     "DELETE",
+    "OPTIONS",
+    "PATCH",
 ]
 
 from corsheaders.defaults import default_headers
@@ -141,6 +144,10 @@ from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
     "content-type",
-    "x-custom-header",
+    "header1",
 ]
 
+# Allow credentials (cookies, auth headers) in cross-origin requests
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_ALL_ORIGINS = False # Allow all origins (not recommended for production)
